@@ -1,0 +1,198 @@
+'Importera bibliotek'
+import os
+
+class FilInfo:
+    'klass som hanterar filer'
+    def __init__(self, filnamn, sokvag, forsta_byte, forsta_rad_binar):
+        self.__Filnamn = filnamn
+        self.__Sokvag = sokvag
+        self.__ForstaByte = forsta_byte 
+        self.__ForstaRadBinar = forsta_rad_binar
+
+    def get_filnamn(self):
+        'filens namn'
+        return self.__Filnamn
+
+    def get_sokvag(self):
+        'sökväg till filen'
+        return self.__Sokvag
+
+    def get_forsta_byte(self):
+        'först byten'
+        return self.__ForstaByte
+
+    def get_forsta_rad_binar(self):
+        'första raden binär'
+        return self.__ForstaRadBinar
+
+    def __str__(self):
+        first_byte_int = int(self.__ForstaByte, 16)  # Omvandla hexadecimalsträngen till ett heltal
+        return f"Sökväg: {self.__Sokvag}\nFilnamn: {self.__Filnamn}\nFörsta byte: {hex(first_byte_int)}\nFörsta rad (binär): {self.__ForstaRadBinar}"
+
+
+class VirusDefinition:
+    'klass som hanterar virus'
+    def __init__(self, beskrivning, virussignatur_ascii, virussignatur_1byte, virussignatur_binar):
+        self.__Beskrivning = beskrivning[:32]
+        self.__VirussignaturASCII = virussignatur_ascii[:255]
+        self.__Virussignatur1abyte = virussignatur_1byte & 0xFF
+        self.__VirussignaturBinar = virussignatur_binar[:255]
+
+        # Beräkna längden av den binära signaturen
+        self.__VirussignaturBinarLength = len(virussignatur_binar)
+
+    def get_beskrivning(self):
+        'namn på virus'
+        return self.__Beskrivning
+
+    def get_virussignatur_1byte(self):
+        'första byten av virus'
+        return self.__Virussignatur1abyte
+
+    def get_virussignatur_binar(self):
+        'hela virus binär'
+        return self.__VirussignaturBinar
+
+    def get_virussignatur_binar_length(self):
+        'längd på virus binär'
+        return self.__VirussignaturBinarLength
+
+    def __str__(self):
+        # Beräkna längden på den binära signaturen
+        signature_length = len(self.__VirussignaturBinar)
+        return f"Beskrivning: {self.__Beskrivning}\nVirussignatur ASCII: {self.__VirussignaturASCII}\nVirussignatur 1-byte: {hex(self.__Virussignatur1abyte)}\nVirussignatur binär: {repr(self.__VirussignaturBinar)}\nLängd på signatur: {signature_length} byte(s)"
+
+class Matching:
+    'klass som hanterar matchande virus och filer'
+    def __init__(self, filnamn, sokvag, virusnamn):
+        self.filnamn = filnamn
+        self.sokvag = sokvag
+        self.virusnamn = virusnamn
+
+    def __str__(self):
+        return f"Filnamn: {self.filnamn}\nSökväg: {self.sokvag}\nVirusnamn: {self.virusnamn}"
+
+
+def find_files(path):
+    'Skapar en lista med alla filer från startposition och skapar objekt av FilInfo till samtliga'
+    sub_files = []  # Listan som spara alla filer
+    paths = os.listdir(path)
+    for item in paths:
+        full_path = os.path.join(path, item)
+        # Om det är en mapp så körs funktionen igen, för att "hoppa ner i trädet".
+        if os.path.isdir(full_path):
+            sub_files += find_files(full_path)
+        elif os.path.isfile(full_path):  # Om det är en fil så sparas den i "Sub_files"
+            filnamn = os.path.basename(full_path)
+            sokvag = os.path.dirname(full_path)
+            with open(full_path, "rb") as file:
+                first_byte = file.read(1)
+                first_byte_hex = hex(int.from_bytes(first_byte, byteorder='big'))  # Konvertera first byte till hexadecimal sträng
+                first_row_binary = first_byte + file.readline()
+                fil_obj = FilInfo(filnamn,
+                                    sokvag,
+                                    first_byte_hex,
+                                    first_row_binary
+                                    )
+            sub_files.append(fil_obj)
+    return sub_files
+
+
+def list_of_viruses(filename):
+    'skapar virus objekt som sparas i lista'
+    virusdefinitions = []
+
+    with open(filename, 'r', encoding='utf-8') as file:
+        for line in file:
+            # Dela upp raden vid "=" för att separera namnet från definitionen
+            name, definition = line.strip().split("=")
+
+            # Konvertera definitionen från hexadecimalsträng till en byte
+            virussignatur_binar = bytes.fromhex(definition)
+
+            # Skapa VirusDefinition-objekt med den lästa informationen
+            virus = VirusDefinition(
+                name,
+                definition,
+                virussignatur_binar[0],
+                virussignatur_binar
+            )
+            # Lägg till VirusDefinition-objektet i listan
+            virusdefinitions.append(virus)
+
+    return virusdefinitions
+
+def searching_files_for_viruses(virusdefinitions, all_files):
+    'Letar efter filer och virus som matchar'
+    matchings = []
+
+    for fil in all_files:
+        # Hämta första byten från filen och konvertera till numeriskt värde
+        file_first_byte = fil.get_forsta_byte()
+        decimal = int(file_first_byte, 16)
+        file_first_byte = decimal
+
+        # Lista för att spara virus som matchar första byten i filen
+        first_byte_matches = []
+
+        # Jämför första byten med första byten av alla virusdefinitioner
+        for virus in virusdefinitions:
+            # Hämta första byten från viruset och konvertera till numeriskt värde
+            virus_first_byte = virus.get_virussignatur_1byte()
+            #print(virus_first_byte)
+            # Om första byten matchar, lägg till viruset i listan first_byte_matches
+            if file_first_byte == virus_first_byte:
+                first_byte_matches.append(virus)
+
+        for matching_virus in first_byte_matches:
+            #Hela beskrivningen av viruset
+            virus_full_lenght = matching_virus.get_virussignatur_binar()
+            #Längden på virusbeskrivning
+            lenght = matching_virus.get_virussignatur_binar_length()
+
+            #Längden på filens "första rad"
+            file_full_info_lenght = len(fil.get_forsta_rad_binar())
+
+            #Om virus längden på virusfilen är mindre/lika med filens rads längd
+            if lenght <= file_full_info_lenght:
+                #Kapa av så de har samma längd
+                file_signature_binary = fil.get_forsta_rad_binar()[:lenght]
+                if file_signature_binary == virus_full_lenght:
+                    #om de är identiska skapa ett objekt och spara i listan
+                    matching_obj = Matching(fil.get_filnamn(),
+                                                   fil.get_sokvag(),
+                                                   matching_virus.get_beskrivning())
+                    matchings.append(matching_obj)
+
+    return matchings
+
+
+def logg_matches(all_matches, output_file):
+    'skriver över informationen i en egen fil'
+    with open(output_file, 'w', encoding="utf-8") as file:
+        for match in all_matches:
+            file.write(f"Filnamn: {match.filnamn}\nSökväg: {match.sokvag}\nVirusnamn: {match.virusnamn}\n\n")
+
+def main():
+    'main-funk'
+    start_position = os.getcwd()
+
+    #kolla om "signatures.db" finns i den positionen
+    if "signatures.db" not in os.listdir(start_position):
+        print("No file named: 'signatures.db' found, exiting program.")
+        exit()
+    else:
+
+        #skapar lista med alla filer
+        all_files = find_files(start_position)
+
+        #använder funktionen för att skapa lista med virusdefinitions objekt
+        virusdefinitions = list_of_viruses("signatures.db")
+
+        #Kollar efter virus i filerna och loggar dessa
+        matches = searching_files_for_viruses(virusdefinitions, all_files)
+        logg_matches(matches, 'dv1667.log')
+
+
+if __name__ == "__main__":
+    main()
